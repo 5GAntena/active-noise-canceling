@@ -7,6 +7,9 @@ from scipy.io import wavfile
 from types_lib import _stft, _istft, _amp_to_db, _db_to_amp
 from filters import apply_filter
 
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+
 class AudioProcessor:
     def __init__(self, format=pyaudio.paFloat32, channels=2, rate=44100, buffer=2048):
         self.format = format
@@ -170,9 +173,16 @@ class AudioProcessor:
         
         denoised_data = self.process_audio(audio_data)
 
-        filtered_data = apply_filter(denoised_data, lowcut_freq=500, filter_type="")
+        filtered_signal = np.empty_like(audio_data)
+
+        process_channel_partial = partial(apply_filter, lowcut_freq=50, rate=self.rate, filter_type="low")
+
+        with ThreadPoolExecutor(max_workers=self.channels) as executor:
+            filtered_data = list(executor.map(process_channel_partial, [denoised_data[i::2] for i in range(self.channels)]))
         
-        self.output_stream.write(filtered_data.astype(np.float32).tobytes())
+        filtered_signal = np.array(filtered_data).T
+        
+        self.output_stream.write(filtered_signal.astype(np.float32).tobytes())
         
         return (None, pyaudio.paContinue)
     
