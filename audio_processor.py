@@ -5,7 +5,7 @@ from scipy.signal import fftconvolve
 from scipy.io import wavfile
 
 from types_lib import _stft, _istft, _amp_to_db, _db_to_amp
-from filters import fft_lowpass_filter, fft_highpass_filter, fft_bandpass_filter
+from filters import apply_filter
 
 class AudioProcessor:
     def __init__(self, format=pyaudio.paFloat32, channels=2, rate=44100, buffer=2048):
@@ -13,9 +13,6 @@ class AudioProcessor:
         self.channels = channels
         self.rate = rate
         self.buffer = buffer
-
-        self.shooting_freq = 3000
-        self.steps_freq = 100
         
         self.p = pyaudio.PyAudio()
 
@@ -32,7 +29,7 @@ class AudioProcessor:
         self.audio_buffer = np.array([], dtype=np.float32)
 
     def load_noise_file(self):
-        sample_rate, noise_data = wavfile.read(r"C:\Users\&&&&\Desktop\tarkov_sounds\factory\amb_factory2-sharedassets3.assets-14.wav")
+        sample_rate, noise_data = wavfile.read(r"C:\Users\kemerios\Desktop\tarkov_sounds\factory\amb_factory2-sharedassets3.assets-14.wav")
 
         noise_data_flatten = noise_data.flatten().astype(np.float32)
 
@@ -44,8 +41,8 @@ class AudioProcessor:
     """Remove noise from audio based upon a clip containing only noise
 
     Args:
-        audio_clip (1d np array): The first parameter.
-        noise_clip (1d np array): The second parameter.
+        audio_data (1d np array): The first parameter.
+        noise_data (1d np array): The second parameter.
         n_grad_freq (int): how many frequency channels to smooth over with the mask.
         n_grad_time (int): how many time channels to smooth over with the mask.
         n_fft (int): number audio of frames between STFT columns.
@@ -59,16 +56,16 @@ class AudioProcessor:
         array: The recovered signal with noise subtracted
 
     """
-    def noise_sub(self, indata, noise, n_grad_freq=4, n_grad_time=8, n_fft=2048, win_length=2048, hop_length=1024, n_std_thresh=1.5, prop_decrease=1.0):
+    def noise_sub(self, audio_data, noise_data, n_grad_freq=4, n_grad_time=8, n_fft=2048, win_length=2048, hop_length=1024, n_std_thresh=1.5, prop_decrease=1.0):
 
-        noise_stft = _stft(noise, n_fft, hop_length, win_length)
+        noise_stft = _stft(noise_data, n_fft, hop_length, win_length)
         noise_stft_db = _amp_to_db(np.abs(noise_stft))
         
         mean_freq_noise = np.mean(noise_stft_db, axis=1)
         std_freq_noise = np.std(noise_stft_db, axis=1)
         noise_thresh = mean_freq_noise + std_freq_noise * n_std_thresh
         
-        sig_stft = _stft(indata, n_fft, hop_length, win_length)
+        sig_stft = _stft(audio_data, n_fft, hop_length, win_length)
         sig_stft_db = _amp_to_db(np.abs(sig_stft))
         
         mask_gain_db = np.min(_amp_to_db(np.abs(sig_stft)))
@@ -112,6 +109,17 @@ class AudioProcessor:
         recovered_signal = _istft(sig_stft_amp, hop_length, win_length)
         
         return recovered_signal
+
+    """Find the output device given the name of the device
+    
+    Args:
+        p (class): PyAudio() object
+    
+    
+    Returns:
+        int: Index of the device
+
+    """
 
     def find_output_device(self, p):
 
@@ -162,7 +170,7 @@ class AudioProcessor:
         
         denoised_data = self.process_audio(audio_data)
 
-        filtered_data = fft_bandpass_filter(denoised_data, self.steps_freq, self.shooting_freq, self.rate)
+        filtered_data = apply_filter(denoised_data, lowcut_freq=500, filter_type="")
         
         self.output_stream.write(filtered_data.astype(np.float32).tobytes())
         
